@@ -71,18 +71,63 @@ uint64_t TxpipeAddrs = 0x11223344AA;
 uint32_t adcVal[4];
 uint8_t payload[4];
 
+volatile uint8_t mapMin0 = 0;
+volatile uint8_t mapMax0 = 180;
+volatile uint8_t mapMin1 = 0;
+volatile uint8_t mapMax1 = 180;
+volatile uint8_t mapMin2 = 0;
+volatile uint8_t mapMax2 = 180;
+volatile uint8_t mapMin3 = 0;
+volatile uint8_t mapMax3 = 180;
 
 int _write(int file, char *outgoing, int len) {
    HAL_UART_Transmit(&huart2, outgoing, len, 100);
    return len;
 }
 
-long map(long x, long in_min, long in_max, long out_min, long out_max)
+uint8_t map_8Bit(long x, long in_min, long in_max, uint8_t out_min, uint8_t out_max)
 {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if(GPIO_Pin == Button0_Pin){
+		HAL_GPIO_TogglePin( Green_LED_GPIO_Port, Green_LED_Pin);
 
+		uint8_t temp = mapMin0;
+		mapMin0 = mapMax0;
+		mapMax0 = temp;
+	}
+	if(GPIO_Pin == Button1_Pin){
+		HAL_GPIO_TogglePin( Orange_LED_GPIO_Port, Orange_LED_Pin);
+
+		uint8_t temp = mapMin1;
+		mapMin1 = mapMax1;
+		mapMax1 = temp;
+	}
+	if(GPIO_Pin == Button2_Pin){
+		HAL_GPIO_TogglePin( Red_LED_GPIO_Port, Red_LED_Pin);
+
+		uint8_t temp = mapMin2;
+		mapMin2 = mapMax2;
+		mapMax2 = temp;
+	}
+	if(GPIO_Pin == Button3_Pin){
+		HAL_GPIO_TogglePin( Blue_LED_GPIO_Port, Blue_LED_Pin);
+
+		uint8_t temp = mapMin3;
+		mapMin3 = mapMax3;
+		mapMax3 = temp;
+	}
+
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+  /* Prevent unused argument(s) compilation warning */
+  UNUSED(hadc);
+}
 /* USER CODE END 0 */
 
 /**
@@ -108,7 +153,13 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-  //*********MAKE SURE DMA IS INITIALIZED BEFORE ADC****
+
+
+  //IF YOU ARE HAVING A BUG WITH THE ADC INPUTS
+  //MAKE SURE DMA IS INITIALIZED BEFORE ADC
+  //THIS HAPPENS AFTER CODE GENERATION
+
+
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -116,6 +167,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_DMA_Init();
   MX_ADC1_Init();
+
   MX_SPI1_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
@@ -145,20 +197,31 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
+	printf("0: %d\r\n", map_8Bit(adcVal[0],350, 3600, mapMin0, mapMax0));
+	printf("1: %d\r\n", map_8Bit(adcVal[1],350, 3600, mapMin1, mapMax1));
+	printf("2: %d\r\n", map_8Bit(adcVal[2],350, 3600, mapMin2, mapMax2));
+	printf("3: %d\r\n", map_8Bit(adcVal[3],350, 3600, mapMin3, mapMax3));
 
-	uint8_t i;
-	for(i = 0; i < 4; i++){
-		uint8_t mappedVal = map(adcVal[i],350, 3600, 0, 180);
-		printf("%d: %d\r\n", i, mappedVal);
-		payload[i] = mappedVal;
+	payload[0] = map_8Bit(adcVal[0],350, 3600, mapMin0, mapMax0);
+	payload[1] = map_8Bit(adcVal[1],350, 3600, mapMin1, mapMax1);
+	payload[2] = map_8Bit(adcVal[2],350, 3600, mapMin2, mapMax2);
+	payload[3] = map_8Bit(adcVal[3],350, 3600, mapMin3, mapMax3);
 
-	}
+
+//	uint8_t i;
+//	for(i = 0; i < 4; i++){
+//		uint8_t mappedVal = map(adcVal[i],350, 3600, mapMin1, mapMax1);
+//		printf("%d: %d\r\n", i, mappedVal);
+//		payload[i] = mappedVal;
+//
+//	}
 	if(NRF24_write(payload, 32)){
 		printf("Transmission successful\r\n");
 	}
@@ -344,7 +407,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 8400;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 100;
+  htim2.Init.Period = 1000;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -428,22 +491,29 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOH_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(Blue_LED_GPIO_Port, Blue_LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, Green_LED_Pin|Orange_LED_Pin|Red_LED_Pin|Blue_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, CSNpin_Pin|CEpin_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : Blue_LED_Pin */
-  GPIO_InitStruct.Pin = Blue_LED_Pin;
+  /*Configure GPIO pins : Button0_Pin Button1_Pin Button2_Pin Button3_Pin */
+  GPIO_InitStruct.Pin = Button0_Pin|Button1_Pin|Button2_Pin|Button3_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : Green_LED_Pin Orange_LED_Pin Red_LED_Pin Blue_LED_Pin */
+  GPIO_InitStruct.Pin = Green_LED_Pin|Orange_LED_Pin|Red_LED_Pin|Blue_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(Blue_LED_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /*Configure GPIO pins : CSNpin_Pin CEpin_Pin */
   GPIO_InitStruct.Pin = CSNpin_Pin|CEpin_Pin;
@@ -452,27 +522,25 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
-{
-  /* Prevent unused argument(s) compilation warning */
-  UNUSED(hadc);
-
-  /* NOTE : This function should not be modified. When the callback is needed,
-            function HAL_ADC_ConvCpltCallback must be implemented in the user file.
-   */
-
-  HAL_GPIO_TogglePin(Blue_LED_GPIO_Port, Blue_LED_Pin);
 
 
-  //printf("adcVal[0] %lu\n", map(adcVal[0],350, 3600, 500, 2500));
-//  printf("adcVal[1] %lu\n", map(adcVal[1],350, 3600, 500, 2500));
-//  printf("adcVal[2] %lu\n", map(adcVal[2],350, 3600, 500, 2500));
-//  printf("adcVal[3] %lu\n", map(adcVal[3],350, 3600, 500, 2500));
-//  printf("\n");
-}
+
 /* USER CODE END 4 */
 
 /**
